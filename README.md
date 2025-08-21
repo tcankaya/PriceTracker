@@ -49,7 +49,7 @@ A **Java-based automated price tracker** that monitors product prices from e-com
 
 ##  Tech Stack
 •	Java 24
-•	Selenium WebDriver + ChromeDriver
+•	Selenium WebDriver
 •	Jackson for JSON handling
 •	TimerTask for scheduling
 
