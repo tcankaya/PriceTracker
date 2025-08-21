@@ -8,7 +8,7 @@ import org.openqa.selenium.chrome.ChromeOptions;
 public class WebDriverFactory {
 
     public static WebDriver createDriver() {
-        // Setup ChromeDriver binaries automatically
+        
         WebDriverManager.chromedriver().setup();
 
         ChromeOptions options = new ChromeOptions();
