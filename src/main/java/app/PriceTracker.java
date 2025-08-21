@@ -1,168 +1,82 @@
 package app;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.bonigarcia.wdm.WebDriverManager;
-import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
-import java.io.File;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.*;
 
 public class PriceTracker {
-    private static final String FILE = "prices.json";
-    private ObjectMapper mapper = new ObjectMapper();
 
-    // Load products from JSON
-    public List<Product> loadProducts() throws IOException {
-        File file = new File(FILE);
-        if (!file.exists()) {
-            System.out.println("⚠️ prices.json not found, returning empty list.");
-            return new ArrayList<>();
-        }
-        return mapper.readValue(file, new TypeReference<List<Product>>() {});
-    }
+    private final int THREAD_COUNT = 4; // number of parallel checks
+    private final double TOLERANCE = 0.01;
 
-    // Save products back to JSON
-    public void saveProducts(List<Product> products) throws IOException {
-        mapper.writerWithDefaultPrettyPrinter().writeValue(new File(FILE), products);
-    }
+    public void checkPrices(Notifier notifier) throws IOException {
+        List<Product> products = Utils.loadProducts();
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
+        Report report = new Report(); // initialize report
 
-    // Handle cookie popup
-    public void handleCookies(WebDriver driver) {
-        try {
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        List<Future<Void>> futures = new ArrayList<>();
 
-            // Common patterns for cookie/consent buttons
-            String[] possibleIds = {
-                    "onetrust-accept-btn-handler",
-                    "footer_tc_privacy_button_3",
-                    "banner-accept-btn"
-            };
-
-            String[] possibleClasses = {
-                    "cookie-accept",
-                    "accept-cookies",
-                    "consent-btn"
-            };
-
-            String[] possibleTexts = {
-                    "TÜMÜNÜ KABUL ET",
-                    "Accept All",
-                    "Accept Cookies",
-                    "Accept All Cookies",
-                    "Tüm Çerezleri Kabul Et",
-                    "TÜM ÇEREZLERİ KABUL ET",
-                    "ACCEPT ALL COOKIES",
-                    "Accept All Cookies"
-            };
-
-            boolean clicked = false;
-
-            // Try by IDs first
-            for (String id : possibleIds) {
+        for (Product product : products) {
+            futures.add(executor.submit(() -> {
+                WebDriver driver = null;
                 try {
-                    WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(By.id(id)));
-                    btn.click();
-                    System.out.println("✅ Accepted cookies via ID: " + id);
-                    clicked = true;
-                    break;
-                } catch (Exception ignored) {}
-            }
+                    driver = WebDriverFactory.createDriver();
+                    driver.get(product.getUrl());
 
-            // Try by classes
-            if (!clicked) {
-                for (String cls : possibleClasses) {
-                    try {
-                        WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(
-                                By.cssSelector("button." + cls + ", a." + cls)
-                        ));
-                        btn.click();
-                        System.out.println("✅ Accepted cookies via class: " + cls);
-                        clicked = true;
-                        break;
-                    } catch (Exception ignored) {}
+                    Utils.handleCookies(driver);
+
+                    double currentPrice = Utils.fetchPriceFromPage(driver);
+
+                    if (currentPrice == -1) {
+                        String msg = "⚠️ Could not fetch price for " + product.getBrand();
+                        System.out.println(msg);
+                        report.addMessage(msg);
+                        return null;
+                    }
+
+                    System.out.println("DEBUG: Brand: " + product.getBrand() +
+                            " | LastPrice: " + product.getLastPrice() +
+                            " | CurrentPrice: " + currentPrice);
+
+                    if (currentPrice + TOLERANCE < product.getLastPrice()) {
+                        String alertMsg = "🔥 Price drop detected for " + product.getBrand() +
+                                ": " + product.getLastPrice() + " -> " + currentPrice;
+                        report.addMessage(alertMsg);
+                        notifier.sendAlert(product, product.getLastPrice(), currentPrice);
+                    } else {
+                        report.addMessage("✅ Price checked for " + product.getBrand() + ": " + currentPrice);
+                    }
+
+                    product.setLastPrice(currentPrice);
+
+                } catch (Exception e) {
+                    String errorMsg = "❌ Error processing " + product.getBrand() + ": " + e.getMessage();
+                    System.err.println(errorMsg);
+                    report.addMessage(errorMsg);
+                } finally {
+                    if (driver != null) driver.quit();
                 }
-            }
-
-            // Try by button text
-            if (!clicked) {
-                for (String text : possibleTexts) {
-                    try {
-                        WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(
-                                By.xpath("//button[contains(text(),'" + text + "')] | //a[contains(text(),'" + text + "')]")
-                        ));
-                        btn.click();
-                        System.out.println("✅ Accepted cookies via text: " + text);
-                        clicked = true;
-                        break;
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            if (!clicked) {
-                System.out.println("ℹ️ No cookie popup found.");
-            }
-
-        } catch (Exception e) {
-            System.out.println("⚠️ Cookie handling failed: " + e.getMessage());
+                return null;
+            }));
         }
-    }
 
-    // Fetch price from product URL
-    public double fetchPrice(String url, boolean quitAfter) {
-        WebDriverManager.chromedriver().setup();
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--disable-cookie-encryption"); // prevents cookie storage encryption
-        options.addArguments("--disable-site-isolation-trials"); // optional
-        options.addArguments("--disable-background-networking");
-        options.addArguments("--disable-default-apps");
-        options.addArguments("--disable-third-party-cookies");
-        WebDriver driver = new ChromeDriver(options);
-
-        try {
-            driver.get(url);
-
-            // Handle cookies if present (might fail if the targeted cookie button isn't specified in handleCookies method)
-            handleCookies(driver);
-
-            // Wait for span element containing "TL" (might fail here if the targeted website using a different selector)
-            List<WebElement> elementsWithTL = driver.findElements(By.xpath("//span[contains(text(),'TL')]"));
-
-            if (elementsWithTL.isEmpty()) {
-                System.err.println("❌ Could not find any price element on page!");
-                return -1;
+        for (Future<Void> f : futures) {
+            try {
+                f.get();
+            } catch (InterruptedException | ExecutionException e) {
+                System.err.println("❌ Error in parallel execution: " + e.getMessage());
             }
-
-            // Take the first element with TL as the price
-            WebElement priceElement = elementsWithTL.get(0);
-            String priceText = priceElement.getText();
-
-            priceText = priceText.replaceAll("[^\\d,\\.]", ""); // remove everything except digits, dot, comma
-
-            if (priceText.matches("\\d{1,3}(\\.\\d{3})*,\\d{2}")) {
-                priceText = priceText.replace(".", "").replace(",", ".");
-            } else if (priceText.matches("\\d{1,3}(,\\d{3})*\\.\\d{2}")) {
-                priceText = priceText.replace(",", "");
-            } else if (priceText.contains(",")) {
-                priceText = priceText.replace(",", ".");
-            }
-
-            return Double.parseDouble(priceText);
-
-        } catch (Exception e) {
-            System.err.println("❌ Failed to fetch price from " + url + ": " + e.getMessage());
-            return -1;
-        } finally {
-            if (quitAfter) driver.quit();
         }
+
+        Utils.saveProducts(products);
+        executor.shutdown();
+
+        // Generate HTML report
+        report.generateHtmlReport("price_report.html");
+
+        System.out.println("✅ Updated prices.json and generated report successfully.\n");
     }
 }
