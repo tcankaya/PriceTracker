@@ -15,7 +15,7 @@ A **Java-based automated price tracker** that monitors product prices from e-com
 
 ## How It Works
 1. **Add Products:** Add a product URL and brand/product name in `prices.json`.  
-2. **Automated Checks:** The system checks prices every 30 minutes (hardcoded but extendable).  
+2. **Automated Checks:** The system checks prices every 30 minutes (dynamically fetched from config.properties).  
 3. **Cookie Handling:** Automatically accepts cookie popups where possible.  
 4. **Price Detection:** Uses brand-specific or general CSS selectors to locate price elements.  
 5. **Notifications:** Alerts you when the price drops.  
@@ -25,7 +25,6 @@ A **Java-based automated price tracker** that monitors product prices from e-com
 
 ## Known Issues
 - **Cookie Handling Limitations:** Some websites may not have their popups detected because they use different types of selectors not covered yet.  
-- **Hardcoded Interval:** Checks run every 30 minutes; dynamic scheduling is not implemented.  
 - **Price Detection:** Complex layouts may prevent accurate scraping if brand-specific selectors are missing.
 
 ---
