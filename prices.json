@@ -1,0 +1,16 @@
+[ {
+  "brand" : "Zara",
+  "url" : "https://www.zara.com/tr/en/cotton---linen-shirt-p01063305.html?v1=452697181&v2=2458839",
+  "lastPrice" : 1690.0,
+  "cssSelector" : null
+}, {
+  "brand" : "H&M",
+  "url" : "https://www2.hm.com/tr_tr/productpage.1295180003.html",
+  "lastPrice" : 999.99,
+  "cssSelector" : null
+}, {
+  "brand" : "Sephora",
+  "url" : "https://www.sephora.com.tr/p/burberry-goddess---eau-de-parfum-P10052709.html",
+  "lastPrice" : 4.522,
+  "cssSelector" : null
+} ]
